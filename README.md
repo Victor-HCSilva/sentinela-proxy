@@ -28,5 +28,14 @@ Sentinela oferece visibilidade sobre o que entra e sai da sua máquina.
 *   **[Matplotlib](https://matplotlib.org/):** Renderização dos gráficos de análise no painel (Dashboard).
 *   **[SQLAlchemy](https://www.sqlalchemy.org/):** ORM para gerenciamento do banco de dados (armazenamento dos logs de tráfego).
 *   **[Psutil](https://github.com/giampaolo/psutil):** Monitoramento de memória e encerramento de processos (Kill Switch).
+### 🚀 Como Executar (Linux/Ubuntu)
 
+1. Clone o repositório:
+```bash
+git clone https://github.com/Victor-HCSilva/sentinela-proxy.git && cd sentinela-proxy && uv sync && uv run python app.py
+``` 
 - OBS: Testei unicamente em linux (Ubunto) e faltam varios ajustes
+
+- Imagens:
+![Dashboard](./docs/imgs/image-dashboard.png)
+![Dashboard](./docs/imgs/image-monitor.png)
