@@ -33,7 +33,7 @@ ctk_button_labels = {
 
 auth_window = {
     "auth_title" : "Sentinela Auth",
-    "window_logo_size": "300x200"
+    "window_size": "300x200"
 }
 
 
@@ -56,6 +56,7 @@ graphs_configs = {
         "title": "MÉTODOS HTTP",
         "font_size": 10,
         "text_color": white,
+        "query": "SELECT method, COUNT(id) FROM traffic_logs GROUP BY method"
     },
     "barh": 
     {
@@ -70,7 +71,7 @@ graphs_configs = {
         "title": "USO DE MEMÓRIA:",
         "font_size": 10,
         "text_color": white,
-        "query": "SELECT method, COUNT(id) FROM traffic_logs GROUP BY method", 
+        "query": "", 
     },
 }
  
@@ -81,11 +82,11 @@ kill_command_message = {
 }
 
 
-inpector_window = {
-    "inpector_title":"Packet Inspector:",
+inspector_window = {
+    "inspector_title":"Packet Inspector:",
     "inspector_detail_size": "700x500",
     "box": {
-        "text_box": 23,
+        # "text_box": 23,
         "width": 680,
         "height": 480, 
         "font":("Consolas", 12),
@@ -98,50 +99,50 @@ table_labels = {
     "hora": "HORA",
     "med": "MÉD",
     "host": "HOST",
-    "size": "SIZE",
+    "size": "BYTES",
 }
 
-headers = [v for _, v in table_labels]
+table_headers = ([v for _, v in table_labels.items()]) # Corrigido para iterar sobre itens
 
 table = {
     "id": {
         "heading": {
-            table_labels.get('id'), {"text": table_labels.get('id')}
+            "text": table_labels.get('id')
         },
         "column": {
-            table_labels.get('id'),{"width":50}
+            "width": 50
         }
     },
     "hora": {
         "heading": {
-            table_labels.get('hora'), {"text": table_labels.get('hora')}
+            "text": table_labels.get('hora')
         },
         "column": {
-            table_labels.get('hora'), {"width": 80}
+            "width": 80
         }
     },
     "med": {
         "heading": {
-            table_labels.get('med'), {"text": table_labels.get('med')}
+            "text": table_labels.get('med')
         },
         "column": {
-            table_labels.get('med'), {"width": 60}
+            "width": 60
         }
     },
     "host": {
         "heading": {
-            table_labels.get('host'), {"text": "DOMÍNIO/URL"}
+            "text": "DOMÍNIO/URL" 
         },
         "column": {
-            table_labels.get('hora'), {"width": 450}
+            "width": 450
         }
     },
     "size": {
         "heading": {
-            table_labels.get('size'), {"text": table_labels.get('size')}
+            "text": table_labels.get('size')
         },
         "column": {
-            table_labels.get('size'), {"width": 80}
+            "width": 80
         }
     },
 }
@@ -151,6 +152,7 @@ listen_host= '0.0.0.0'
 listen_port=  8080
 
 general_settings = {
+    "theme": "system", # dark, system light
     "db_config": 
     {
         "db_name": "sentinela_v6_fixed.db",
@@ -170,19 +172,20 @@ general_settings = {
         f"{listen_port}" + "/tcp"
     ],
     "adds_domains": 
-    [
+    {
         "doubleclick.net",
         "facebook.com",
-    ],
+    },
     "black_list": [],
     "white_list": [
         "127.0.0.1", 
         "localhost"
     ],
     "block_keywords": [], # ["ads", "banner", "tracker", "pixel"]
-    "headers_to_pop": 
+    "headers_to_exclude": 
     [
         "cookie",
         "referer"
-    ]
+    ],
+    "amount_of_visible_traffic": 32,
 }

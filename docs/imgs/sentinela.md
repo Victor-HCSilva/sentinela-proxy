@@ -33,6 +33,7 @@ software monitoramento. Que a IA batizou de **`sentinela`**
 
 
 
-# Adendo
+### Adendo
 - no unbunto você pode colcoar sua própria proxy como default, assim todos os navegadores
 usaram a proxy, você deve adicionar o certificado para cada uma delas.
+![alt text](image.png)

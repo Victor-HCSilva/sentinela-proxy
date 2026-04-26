@@ -3,7 +3,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 import tempfile
 from datetime import datetime
 import os
-from .configurations import db_config
+from configs import general_settings
+
+db_config = general_settings.get("db_config")
 
 
 Base = declarative_base()
