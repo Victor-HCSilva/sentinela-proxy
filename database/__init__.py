@@ -11,6 +11,7 @@ from .db import (
     update_configs,
     Theme
 )
+from .repository import Repository
 
 __all__ = [
     "SessionLocal",
@@ -25,5 +26,6 @@ __all__ = [
     "populate",
     "is_empty",
     "update_configs",
-    "Theme"
+    "Theme",
+    "Repository"
 ]

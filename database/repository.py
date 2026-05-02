@@ -55,3 +55,10 @@ class Repository:
             return False
         finally:
             if not self._external_session: session.close()
+
+    def get_all(self):
+        session = self._get_session()
+        try:
+            return session.query(self.table).all()
+        finally:
+             if not self._external_session: session.close()

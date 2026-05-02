@@ -147,7 +147,7 @@ table = {
 # Congifurações gerais
 listen_host= '0.0.0.0'
 
-listen_port=  8080
+listen_port=  8081
 
 
 fake_infos = {

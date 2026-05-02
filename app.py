@@ -17,7 +17,6 @@ from mitmproxy.tools.dump import DumpMaster
 
 from application import NetworkCore 
 from database import (
-    SessionLocal,
     SessionLocal, 
     TrafficLog, 
     Configuration,
@@ -143,6 +142,8 @@ class App(ctk.CTk):
         self.settings.configure(fg_color=azul_hexadecimal)
 
 
+
+
     def setup_main_frames(self):
         self.dash_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
 
@@ -253,6 +254,85 @@ class App(ctk.CTk):
 
         # estado temporário (NÃO SALVA AINDA)
         self._pending_theme = "Dark" if self.theme_switch.get() else "Light"
+# Dentro de setup_main_frames, no final da seção de SETTINGS
+        self.setup_management_tab()
+# Carrega a lista inicial (URLs por padrão)
+        self.refresh_mgmt_list()
+
+
+# No app.py, dentro do setup_main_frames ou em um método dedicado
+    def setup_management_tab(self):
+        """Cria a interface para gerenciar listas (Whitelist, Blacklist, Words)"""
+        self.mgmt_frame = ctk.CTkFrame(self.settings_frame)
+        self.mgmt_frame.pack(pady=10, padx=20, fill="both", expand=True)
+
+        # Seletor de qual categoria gerenciar
+        self.category_var = ctk.StringVar(value="URLs")
+        categories = ["URLs", "Palavras Bloqueadas", "Blacklist", "Whitelist"]
+        
+        selector = ctk.CTkOptionMenu(
+            self.mgmt_frame, 
+            values=categories,
+            variable=self.category_var,
+            command=self.refresh_mgmt_list
+        )
+        selector.pack(pady=10)
+
+        # Campo de entrada para novos valores
+        self.new_entry = ctk.CTkEntry(self.mgmt_frame, placeholder_text="Novo valor...")
+        self.new_entry.pack(side="left", padx=10, pady=10, expand=True, fill="x")
+
+        add_btn = ctk.CTkButton(
+            self.mgmt_frame, text="Adicionar", 
+            fg_color=green_hexadecimal,
+            command=self.add_to_list
+        )
+        add_btn.pack(side="right", padx=10)
+
+        # Lista visual (Listbox ou similar)
+        self.items_listbox = ctk.CTkScrollableFrame(self.mgmt_frame, height=200)
+        self.items_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+
+
+    def add_to_list(self):
+
+        val = self.new_entry.get().strip()
+        category = self.category_var.get()
+        if not val: return
+
+        db = SessionLocal()
+        try:
+            # Caso especial: tabelas que usam URL
+            if category in ["Blacklist", "Whitelist", "Domínios"]:
+                url_obj = db.query(Url).filter_by(url=val).first()
+                if not url_obj:
+                    url_obj = Url(url=val)
+                    db.add(url_obj)
+                    db.commit()
+                
+                # Mapeia para o modelo correto
+                model = {"Blacklist": BlackList, "Whitelist": WhiteList, "Domínios": AddDomain}[category]
+                # Criamos a instância manualmente com o objeto relacionado
+                new_item = model(url_id=url_obj.id)
+                db.add(new_item)
+                db.commit()
+            
+            elif category == "Palavras Bloqueadas":
+                db.add(BlockKeyWord(word=val))
+                db.commit()
+
+            elif category == "URLs":
+                db.add(Url(url=val))
+                db.commit()
+
+            self.new_entry.delete(0, 'end')
+            self.refresh_mgmt_list()
+            self.core.load_configs()
+        except Exception as e:
+            db.rollback()
+            messagebox.showerror("Erro", f"Falha ao salvar: {e}")
+        finally:
+            db.close()
 
     def toggle_theme(self, switch):
         """Alterna entre tema claro e escuro"""
@@ -353,6 +433,56 @@ class App(ctk.CTk):
             kill_command_message.get("content_title"),
             f"{kill_command_message.get("message")} {count} processos finalizados."
         )
+
+    def refresh_mgmt_list(self, _=None):
+        """Atualiza a visualização dos itens da categoria selecionada"""
+        # Limpa a lista atual
+        for widget in self.items_listbox.winfo_children():
+            widget.destroy()
+
+        category = self.category_var.get()
+        
+        # Mapeamento para saber qual atributo ler de cada modelo
+        model_map = {
+            "URLs": (Url, "url"),
+            "Palavras Bloqueadas": (BlockKeyWord, "word"),
+            "Blacklist": (BlackList, "domain"),
+            "Whitelist": (WhiteList, "domain"),
+            "Domínios": (AddDomain, "domain"),
+            "Headers Excluídos": (ExcludeHeader, "header_name")
+        }
+
+        model, attr_name = model_map.get(category)
+        from database import Repository
+        repo = Repository(model)
+        items = repo.get_all()
+
+        for item in items:
+            val = getattr(item, attr_name)
+            
+            row = ctk.CTkFrame(self.items_listbox, fg_color="transparent")
+            row.pack(fill="x", pady=2, padx=5)
+            
+            ctk.CTkLabel(row, text=val, anchor="w").pack(side="left", padx=10, expand=True, fill="x")
+            
+            # Botão para deletar o item
+            ctk.CTkButton(
+                row, text="Excluir", width=60, height=24,
+                fg_color=vermelho_hexadecimal,
+                command=lambda i=item.id, m=model: self.delete_mgmt_item(i, m)
+            ).pack(side="right", padx=5)
+
+    def delete_mgmt_item(self, item_id, model):
+        """Remove um item do banco e atualiza a interface e o Core"""
+        from database import Repository
+        repo = Repository(model)
+        
+        if repo.delete(item_id):
+            self.refresh_mgmt_list()
+            # Notifica o proxy para atualizar as listas em memória imediatamente
+            self.core.load_configs()
+        else:
+            messagebox.showerror("Erro", "Não foi possível excluir o item.")
 
 ############
     def update_loop(self):
@@ -523,6 +653,7 @@ def thread_proxy(core):
         logger.info("Comando 'fuser' não disponível no Windows. O proxy pode não ser encerrado automaticamente.")
 
     loop.run_until_complete(start_proxy(core))
+
 
 
 if __name__ == "__main__":
