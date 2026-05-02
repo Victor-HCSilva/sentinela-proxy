@@ -16,7 +16,22 @@ from mitmproxy.tools.dump import DumpMaster
 
 
 from application import NetworkCore 
-from database import SessionLocal, TrafficLog
+from database import (
+    SessionLocal,
+    SessionLocal, 
+    TrafficLog, 
+    Configuration,
+    Url,
+    AddDomain,
+    BlockKeyWord,
+    BlackList,
+    WhiteList,
+    ExcludeHeader,
+    populate,
+    is_empty,
+    update_configs,
+    Theme,
+) 
 
 from configs import (
     general_settings,
@@ -65,6 +80,28 @@ class App(ctk.CTk):
         self.select_frame_by_name("dashboard")
         self.update_loop()
 
+    def _toggle_theme_state(self):
+        """Atualiza o texto do switch baseado no estado atual"""
+        if self.theme_switch.get():
+            self.theme_switch.configure(text="Ativado")
+        else:
+            self.theme_switch.configure(text="Desativado")
+
+    def apply_settings(self):
+        """Persiste as alterações do frame de configurações no banco de dados"""
+        try:
+            new_traffic = int(self.traffic_entry.get())
+            new_theme = Theme.DARK if self.theme_switch.get() else Theme.LIGHT
+            
+            update_configs(traffic_visible=new_traffic, theme=new_theme)
+            
+            # Aplica o tema visualmente na hora
+            ctk.set_appearance_mode(new_theme.value)
+            
+            messagebox.showinfo("Sucesso", "Configurações aplicadas com sucesso!")
+        except ValueError:
+            messagebox.showerror("Erro", "O tráfego visível deve ser um número inteiro.")
+        
     def setup_sidebar(self):
         self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
@@ -151,42 +188,71 @@ class App(ctk.CTk):
         self.tree.bind("<Double-1>", self.open_inspection)
 
         # FRAME SETTINGS
+        # =====================
+        # SETTINGS FRAME (REFATORADO)
+        # =====================
         self.settings_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
-        
-        # Título
+
         ctk.CTkLabel(
-            self.settings_frame, 
+            self.settings_frame,
             text="Configurações do Sistema",
             font=ctk.CTkFont(size=24, weight="bold")
         ).pack(pady=20)
-        
-        # Frame para organizar as opções
+
         options_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
         options_frame.pack(pady=20, padx=40, fill="both", expand=True)
-        
-        # Exemplo: Switch para tema
-        ctk.CTkLabel(options_frame, text="Tema Escuro:").grid(row=0, column=0, pady=10, sticky="w")
-        theme_switch = ctk.CTkSwitch(
-            options_frame, 
-            text="Ativado" if ctk.get_appearance_mode() == "Dark" else "Desativado",
-            command=lambda: self.toggle_theme(theme_switch)
+
+        # ===== CARREGAR CONFIG DO BANCO =====
+        db = SessionLocal()
+        config = db.query(Configuration).filter_by(id=1234).first()
+        db.close()
+
+        # fallback seguro
+        traffic_value = config.traffic_visible if config else 100
+        theme_value = config.theme.value if config else "Dark"
+
+        # =====================
+        # TRAFFIC INPUT
+        # =====================
+        ctk.CTkLabel(options_frame, text="Tráfego visível:").grid(
+            row=0, column=0, pady=10, sticky="w"
         )
-        theme_switch.grid(row=0, column=1, pady=10, padx=20)
-        theme_switch.select() if ctk.get_appearance_mode() == "Dark" else theme_switch.deselect()
-        
-        # Exemplo: Entry para quantidade de tráfego visível
-        ctk.CTkLabel(options_frame, text="Tráfego visível:").grid(row=1, column=0, pady=10, sticky="w")
-        traffic_entry = ctk.CTkEntry(options_frame, placeholder_text="Quantidade de registros")
-        traffic_entry.grid(row=1, column=1, pady=10, padx=20)
-        traffic_entry.insert(0, str(general_settings.get("amount_of_visible_traffic", 100)))
-        
-        # Botão salvar
+
+        self.traffic_entry = ctk.CTkEntry(options_frame)
+        self.traffic_entry.grid(row=0, column=1, pady=10, padx=20)
+        self.traffic_entry.insert(0, str(traffic_value))
+
+        # =====================
+        # THEME SWITCH
+        # =====================
+        ctk.CTkLabel(options_frame, text="Tema escuro:").grid(
+            row=1, column=0, pady=10, sticky="w"
+        )
+
+        self.theme_switch = ctk.CTkSwitch(
+            options_frame,
+            text="Ativado",
+            command=self._toggle_theme_state
+        )
+        self.theme_switch.grid(row=1, column=1, pady=10, padx=20)
+
+        if theme_value == "Dark":
+            self.theme_switch.select()
+        else:
+            self.theme_switch.deselect()
+
+        # =====================
+        # BOTÃO CONFIRMAR
+        # =====================
         ctk.CTkButton(
             options_frame,
-            text="Salvar Configurações",
-            command=lambda: self.save_settings(traffic_entry.get(), theme_switch.get()),
-            fg_color=green_hexadecimal
+            text="Confirmar alterações",
+            fg_color=green_hexadecimal,
+            command=self.apply_settings
         ).grid(row=2, column=0, columnspan=2, pady=30)
+
+        # estado temporário (NÃO SALVA AINDA)
+        self._pending_theme = "Dark" if self.theme_switch.get() else "Light"
 
     def toggle_theme(self, switch):
         """Alterna entre tema claro e escuro"""
@@ -288,55 +354,107 @@ class App(ctk.CTk):
             f"{kill_command_message.get("message")} {count} processos finalizados."
         )
 
+############
     def update_loop(self):
-        quantidade_de_trafegos_visiveis = general_settings.get("amount_of_visible_traffic")
         db = SessionLocal()
+
         try:
+            config = db.query(Configuration).filter_by(id=1234).first()
+
+            quantidade_de_trafegos_visiveis = (
+                config.traffic_visible
+                if config else general_settings.get("amount_of_visible_traffic")
+            )
+
             pie_conf = graphs_configs.get("pie")
             barh_conf = graphs_configs.get("barh")
             line_conf = graphs_configs.get("line")
 
-            logs = db.query(TrafficLog).order_by(TrafficLog.id.desc()).limit(quantidade_de_trafegos_visiveis).all()
+            logs = (
+                db.query(TrafficLog)
+                .order_by(TrafficLog.id.desc())
+                .limit(quantidade_de_trafegos_visiveis)
+                .all()
+            )
+
             self.tree.delete(*self.tree.get_children())
 
             for log in logs:
-                self.tree.insert("", "end", values=(log.id, log.timestamp.strftime("%H:%M:%S"), log.method, log.host, log.size))
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        log.id,
+                        log.timestamp.strftime("%H:%M:%S"),
+                        log.method,
+                        log.host,
+                        log.size,
+                    ),
+                )
 
             if self.dash_frame.winfo_ismapped():
 
-                # Host Bar (Horizontal)
                 self.ax_host.clear()
                 res_h = db.execute(text(barh_conf.get("query"))).fetchall()
-                if res_h:
-                    self.ax_host.barh([r[0][:20] for r in res_h], [r[1] for r in res_h], color=azul_hexadecimal) # Usando a variável
-                self.ax_host.set_title(barh_conf.get("title"), fontsize=barh_conf.get("font_size"), color=barh_conf.get("text_color"))
 
-                # Pizza
+                if res_h:
+                    self.ax_host.barh(
+                        [r[0][:20] for r in res_h],
+                        [r[1] for r in res_h],
+                        color=azul_hexadecimal,
+                    )
+
+                self.ax_host.set_title(
+                    barh_conf.get("title"),
+                    fontsize=barh_conf.get("font_size"),
+                    color=barh_conf.get("text_color"),
+                )
+
                 self.ax_meth.clear()
                 res_m = db.execute(text(pie_conf.get("query"))).fetchall()
 
                 if res_m:
-                    self.ax_meth.pie([r[1] for r in res_m], labels=[r[0] for r in res_m], autopct='%1.1f%%', textprops={'color':pie_conf.get("text_color")}) # Usando a variável de cor
-                self.ax_meth.set_title(pie_conf.get("title"), fontsize=pie_conf.get("font_size"), color=pie_conf.get("text_color"))
+                    self.ax_meth.pie(
+                        [r[1] for r in res_m],
+                        labels=[r[0] for r in res_m],
+                        autopct="%1.1f%%",
+                        textprops={"color": pie_conf.get("text_color")},
+                    )
 
-                # RAM Line
+                self.ax_meth.set_title(
+                    pie_conf.get("title"),
+                    fontsize=pie_conf.get("font_size"),
+                    color=pie_conf.get("text_color"),
+                )
+
                 self.ax_ram.clear()
+
                 mem = psutil.virtual_memory().percent
                 self.core.ram_history.append(mem)
 
                 if len(self.core.ram_history) > 30:
                     self.core.ram_history.pop(0)
 
-                self.ax_ram.plot(self.core.ram_history, color=green_hexadecimal, linewidth=2) # Usando a variável
-                self.ax_ram.set_title(f"{line_conf.get("title")} {mem}%", fontsize=line_conf.get("font_size"), color=line_conf.get("text_color"))
+                self.ax_ram.plot(
+                    self.core.ram_history,
+                    color=green_hexadecimal,
+                    linewidth=2,
+                )
+
+                self.ax_ram.set_title(
+                    f"{line_conf.get('title')} {mem}%",
+                    fontsize=line_conf.get("font_size"),
+                    color=line_conf.get("text_color"),
+                )
+
                 self.ax_ram.set_ylim(0, 100)
 
                 self.fig.tight_layout()
                 self.canvas.draw()
 
         except Exception as e:
-            logger.error(f"Erro no loop de atualização: {e}") # Usando logger
-            # os.system("Erro no loop de atualização de gráficos") # Remover, pois o logger já registra
+            logger.error(f"Erro no loop de atualização: {e}")
+
         finally:
             db.close()
 

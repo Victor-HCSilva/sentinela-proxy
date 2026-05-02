@@ -9,6 +9,7 @@ from .db import (
     populate,
     is_empty,
     update_configs,
+    Theme
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "populate",
     "is_empty",
     "update_configs",
+    "Theme"
 ]

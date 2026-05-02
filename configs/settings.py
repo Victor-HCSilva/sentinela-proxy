@@ -11,19 +11,6 @@ gray_headecimal = "#333333"
 
 gray = "gray25"
 
-# Database
-tables_names = {
-    "traffic_log": "traffic_logs",
-    "configs": "configs",
-    "urls": "urls",
-    "add_domains": "add_domains",
-    "block_key_words": "block_key_words",
-    "black_list": "black_list",
-    "white_list": "white_list",
-    "exclude_headers": "exclude_headers"
-}
-
-defaults_configs = (1234, 32, "Dark") 
 
 # interface
 app_config = {
@@ -179,11 +166,6 @@ content_type = {
 
 general_settings = {
     "theme": "dark", # dark, system light TODO: tabela de configurações
-    "db_config": 
-    {
-        "db_name": "sentinela_v6_fixed.db",
-        "engine_db_type": "sqlite:///",
-    },
     "programs_name":  
     [
         "chrome",

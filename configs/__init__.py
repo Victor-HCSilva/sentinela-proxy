@@ -18,7 +18,7 @@ from .settings import (
     listen_host,
     listen_port,
     general_settings,
-    fake_infos
+    fake_infos,
 )
 
 __all__ = [
