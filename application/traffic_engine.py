@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrafficFilterEngine:
+    """Auxliar para ações de bloqueio"""
     def __init__(self):
         # caches
         self.ad_domains = set()

@@ -99,7 +99,7 @@ table_labels = {
     "size": "BYTES",
 }
 
-table_headers = ([v for _, v in table_labels.items()]) # Corrigido para iterar sobre itens
+table_headers = ([v for _, v in table_labels.items()])
 
 table = {
     "id": {
@@ -144,18 +144,17 @@ table = {
     },
 }
 
-# Congifurações gerais
+# porta do host
 listen_host= '0.0.0.0'
+listen_port=  8080
 
-listen_port=  8081
-
-
+# perfil falso
 fake_infos = {
     "header": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Brave/120.0.0.0",
     "ip": "198.163.111.1",    
 }
 
-
+# tipo de conteudo
 content_type = {
     "json": "application/json",
     "img": "image/png",
@@ -163,7 +162,7 @@ content_type = {
     "js": "text/javascript",
 }
 
-
+# configuraçõe gerais
 general_settings = {
     "theme": "dark", # dark, system light TODO: tabela de configurações
     "programs_name":  
@@ -179,22 +178,5 @@ general_settings = {
         "-k",
         f"{listen_port}" + "/tcp"
     ],
-    "adds_domains": 
-    {
-        "doubleclick.net",
-        "facebook.com",
-    },
-    "black_list": [],
-    "white_list": [
-        "127.0.0.1", 
-        "localhost"
-    ],
-    "block_keywords": [], # ["ads", "banner", "tracker", "pixel"]
-    "headers_to_exclude": 
-    [
-        "cookie",
-        "referer"
-    ],
-    "amount_of_visible_traffic": 32,
 }
 

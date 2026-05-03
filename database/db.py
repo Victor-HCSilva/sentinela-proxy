@@ -148,58 +148,49 @@ def is_empty():
 def populate():
     session = SessionLocal()
     try:
-        # Config padrão
+        # 1. Config padrão
         if not session.query(Configuration).filter_by(id=1234).first():
-            session.add(Configuration(
-                id=1234,
-                traffic_visible=32,
-                theme=Theme.DARK
-            ))
+            session.add(Configuration(id=1234, traffic_visible=32, theme=Theme.DARK))
 
-        # URLs conhecidas
-        urls_data = [
-            'google.com',
-            'globo.com',
-            'youtube.com',
-            'facebook.com',
-            'chatgpt.com',
-            'x.com',
-            'reddit.com',
-        ]
-
-        for url_str in urls_data:
-            # Verifica se a URL já existe antes de adicionar
+        # 2. URLs Base (Adicionadas primeiro para garantir que tenham IDs)
+        base_urls = ['google.com', 'globo.com', 'youtube.com', 'facebook.com', 'chatgpt.com', 'x.com', 'reddit.com', 'doubleclick.net', 'adservice.google.com', 'analytics.google.com']
+        for url_str in base_urls:
             if not session.query(Url).filter_by(url=url_str).first():
                 session.add(Url(url=url_str))
-        session.flush()  # garante IDs disponíveis
+        session.flush() 
 
-        # Domínios de anúncios
-        ads_ids = [4, 2]
-        for uid in ads_ids:
-            if not session.query(AddDomain).filter_by(url_id=uid).first():
-                session.add(AddDomain(url_id=uid))
-
-        # Blacklist
-        if not session.query(BlackList).filter_by(url_id=2).first():
-            session.add(BlackList(url_id=2))
-
-        # Headers excluíveis
-        # headers = ['cookie', 'User-Agent', 'Authorization']
-        headers = []
-        for h in headers:
+        # 3. Headers para excluir (Privacidade)
+        headers_to_exclude = ['Cookie', 'Authorization', 'Proxy-Authorization', 'Set-Cookie', 'X-CSRF-Token']
+        for h in headers_to_exclude:
             if not session.query(ExcludeHeader).filter_by(field_name=h).first():
                 session.add(ExcludeHeader(field_name=h))
+        session.flush()
 
-        # Whitelist
-        whitelist_ids = [1, 3]
-        for uid in whitelist_ids:
-            if not session.query(WhiteList).filter_by(url_id=uid).first():
-                session.add(WhiteList(url_id=uid))
+        # 4. Domínios de Anúncios (Ex: doubleclick.net é o ID 8 se seguir a ordem)
+        # Vamos buscar os IDs pelo nome da URL para não depender de números fixos
+        ad_domains = ['doubleclick.net', 'adservice.google.com']
+        for domain in ad_domains:
+            url_rec = session.query(Url).filter_by(url=domain).first()
+            if url_rec and not session.query(AddDomain).filter_by(url_id=url_rec.id).first():
+                session.add(AddDomain(url_id=url_rec.id))
+
+        # 5. Blacklist (Domínios que queremos bloquear totalmente)
+        blacklist_domains = ['doubleclick.net']
+        for domain in blacklist_domains:
+            url_rec = session.query(Url).filter_by(url=domain).first()
+            if url_rec and not session.query(BlackList).filter_by(url_id=url_rec.id).first():
+                session.add(BlackList(url_id=url_rec.id))
+
+        # 6. Whitelist (Exemplos seguros)
+        whitelist_domains = ['google.com', 'chatgpt.com']
+        for domain in whitelist_domains:
+            url_rec = session.query(Url).filter_by(url=domain).first()
+            if url_rec and not session.query(WhiteList).filter_by(url_id=url_rec.id).first():
+                session.add(WhiteList(url_id=url_rec.id))
 
         session.commit()
     finally:
         session.close()
-
 
 def update_configs(traffic_visible: int = 32, theme: Theme = Theme.DARK):
     session = SessionLocal()

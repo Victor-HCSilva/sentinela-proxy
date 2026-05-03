@@ -1,21 +1,21 @@
+# AUXILIARES
 import logging
-import customtkinter as ctk
-from tkinter import ttk, messagebox
 import threading
-import asyncio
-import os
-import subprocess
 import psutil
 
+# INTERFACE
+import customtkinter as ctk
+from tkinter import ttk, messagebox
+
+# GRÁFICOS
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from sqlalchemy import text
 
-from mitmproxy.options import Options
-from mitmproxy.tools.dump import DumpMaster
+# NETWORK
+from application import NetworkCore, thread_proxy
 
-
-from application import NetworkCore 
+# DATABASE
+from sqlalchemy import select, text
 from database import (
     SessionLocal, 
     TrafficLog, 
@@ -26,12 +26,11 @@ from database import (
     BlackList,
     WhiteList,
     ExcludeHeader,
-    populate,
-    is_empty,
     update_configs,
     Theme,
 ) 
 
+# CONFIGURAÇÕES GERAIS
 from configs import (
     general_settings,
     app_config,
@@ -40,15 +39,13 @@ from configs import (
     inspector_window,
     kill_command_message,
     graphs_configs,
-    listen_host,
-    listen_port,
     auth_labels,
     auth_window,
     azul_hexadecimal,
     vermelho_hexadecimal,
     green_hexadecimal,
     gray,
-    fake_infos,
+    white,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +56,7 @@ ctk.set_default_color_theme("blue")
 
 class App(ctk.CTk):
     """
-    App com tkinter estilo dark para visual mais agradável
+    App com customtkinter estilo dark para visual mais agradável
     Visa monitorar conexões http/https e encerrar conexões
     suspeitas
     """
@@ -126,8 +123,8 @@ class App(ctk.CTk):
         self.btn_kill = ctk.CTkButton(
             self.sidebar_frame,
             text=ctk_button_labels.get("kill"),
-            fg_color=vermelho_hexadecimal, # Usando a variável de cor
-            hover_color="#7b241c", # Mantive o hover_color hardcoded, mas poderia ser outra variável
+            fg_color=vermelho_hexadecimal, 
+            hover_color="#7b241c", 
             command=self.kill_browsers
         )
         self.btn_kill.pack(side="bottom", pady=30, padx=20)
@@ -140,8 +137,6 @@ class App(ctk.CTk):
         self.settings.pack(pady=10, padx=20)
 
         self.settings.configure(fg_color=azul_hexadecimal)
-
-
 
 
     def setup_main_frames(self):
@@ -167,13 +162,13 @@ class App(ctk.CTk):
 
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Treeview", background="#2b2b2b", foreground="white", fieldbackground="#2b2b2b", borderwidth=0, font=('Arial', 10))
-        style.configure("Treeview.Heading", background="#333333", foreground="white", relief="flat")
-        style.map("Treeview", background=[('selected', azul_hexadecimal)]) # Usando a variável de cor
+        style.configure("Treeview", background="#2b2b2b", foreground=white, fieldbackground="#2b2b2b", borderwidth=0, font=('Arial', 10))
+        style.configure("Treeview.Heading", background="#333333", foreground=white, relief="flat")
+        style.map("Treeview", background=[('selected', azul_hexadecimal)])
 
         self.tree = ttk.Treeview(
             self.monitor_frame,
-            columns=list(table.keys()), # CORREÇÃO: Usar as chaves do dicionário 'table'
+            columns=list(table.keys()),
             show='headings'
         )
 
@@ -254,13 +249,14 @@ class App(ctk.CTk):
 
         # estado temporário (NÃO SALVA AINDA)
         self._pending_theme = "Dark" if self.theme_switch.get() else "Light"
-# Dentro de setup_main_frames, no final da seção de SETTINGS
+
+        # Dentro de setup_main_frames, no final da seção de SETTINGS
         self.setup_management_tab()
-# Carrega a lista inicial (URLs por padrão)
+
+        # Carrega a lista inicial (URLs por padrão)
         self.refresh_mgmt_list()
 
 
-# No app.py, dentro do setup_main_frames ou em um método dedicado
     def setup_management_tab(self):
         """Cria a interface para gerenciar listas (Whitelist, Blacklist, Words)"""
         self.mgmt_frame = ctk.CTkFrame(self.settings_frame)
@@ -268,8 +264,14 @@ class App(ctk.CTk):
 
         # Seletor de qual categoria gerenciar
         self.category_var = ctk.StringVar(value="URLs")
-        categories = ["URLs", "Palavras Bloqueadas", "Blacklist", "Whitelist"]
-        
+        categories = [
+            "URLs",
+            "Palavras Bloqueadas",
+            "Blacklist",
+            "Whitelist",
+            "Domínios de Anúncio",
+            "Headers Excluídos"
+        ] 
         selector = ctk.CTkOptionMenu(
             self.mgmt_frame, 
             values=categories,
@@ -295,42 +297,38 @@ class App(ctk.CTk):
 
 
     def add_to_list(self):
-
         val = self.new_entry.get().strip()
         category = self.category_var.get()
         if not val: return
 
         db = SessionLocal()
         try:
-            # Caso especial: tabelas que usam URL
-            if category in ["Blacklist", "Whitelist", "Domínios"]:
+            if category in ["URLs", "Palavras Bloqueadas", "Blacklist", "Whitelist", "Domínios de Anúncio", "Headers Excluídos"]:
                 url_obj = db.query(Url).filter_by(url=val).first()
                 if not url_obj:
                     url_obj = Url(url=val)
                     db.add(url_obj)
                     db.commit()
                 
-                # Mapeia para o modelo correto
-                model = {"Blacklist": BlackList, "Whitelist": WhiteList, "Domínios": AddDomain}[category]
-                # Criamos a instância manualmente com o objeto relacionado
-                new_item = model(url_id=url_obj.id)
-                db.add(new_item)
-                db.commit()
+                model = {"Blacklist": BlackList, "Whitelist": WhiteList, "Domínios de Anúncio": AddDomain}[category]
+                db.add(model(url_id=url_obj.id))
             
             elif category == "Palavras Bloqueadas":
                 db.add(BlockKeyWord(word=val))
-                db.commit()
-
+            
+            elif category == "Headers Excluídos":
+                db.add(ExcludeHeader(field_name=val))
+            
             elif category == "URLs":
                 db.add(Url(url=val))
-                db.commit()
 
+            db.commit()
             self.new_entry.delete(0, 'end')
             self.refresh_mgmt_list()
             self.core.load_configs()
         except Exception as e:
             db.rollback()
-            messagebox.showerror("Erro", f"Falha ao salvar: {e}")
+            messagebox.showerror("Erro", f"Não foi possível adicionar: {e}")
         finally:
             db.close()
 
@@ -435,42 +433,42 @@ class App(ctk.CTk):
         )
 
     def refresh_mgmt_list(self, _=None):
-        """Atualiza a visualização dos itens da categoria selecionada"""
-        # Limpa a lista atual
         for widget in self.items_listbox.winfo_children():
             widget.destroy()
 
         category = self.category_var.get()
         
-        # Mapeamento para saber qual atributo ler de cada modelo
+        # Mapeamento atualizado
         model_map = {
             "URLs": (Url, "url"),
             "Palavras Bloqueadas": (BlockKeyWord, "word"),
-            "Blacklist": (BlackList, "domain"),
-            "Whitelist": (WhiteList, "domain"),
-            "Domínios": (AddDomain, "domain"),
-            "Headers Excluídos": (ExcludeHeader, "header_name")
+            "Blacklist": (BlackList, "url"), # Nota: aqui usamos o relacionamento
+            "Whitelist": (WhiteList, "url"),
+            "Domínios de Anúncio": (AddDomain, "url"),
+            "Headers Excluídos": (ExcludeHeader, "field_name")
         }
 
-        model, attr_name = model_map.get(category)
+        model, attr = model_map.get(category)
         from database import Repository
         repo = Repository(model)
         items = repo.get_all()
 
         for item in items:
-            val = getattr(item, attr_name)
+            # Lógica para tratar o objeto relacionado (ex: exibir o nome da URL em vez do objeto)
+            val = getattr(item, attr)
+            if hasattr(val, 'url'): # Caso seja um objeto relacionado
+                val = val.url
             
             row = ctk.CTkFrame(self.items_listbox, fg_color="transparent")
             row.pack(fill="x", pady=2, padx=5)
-            
             ctk.CTkLabel(row, text=val, anchor="w").pack(side="left", padx=10, expand=True, fill="x")
             
-            # Botão para deletar o item
             ctk.CTkButton(
                 row, text="Excluir", width=60, height=24,
                 fg_color=vermelho_hexadecimal,
                 command=lambda i=item.id, m=model: self.delete_mgmt_item(i, m)
             ).pack(side="right", padx=5)
+
 
     def delete_mgmt_item(self, item_id, model):
         """Remove um item do banco e atualiza a interface e o Core"""
@@ -484,7 +482,7 @@ class App(ctk.CTk):
         else:
             messagebox.showerror("Erro", "Não foi possível excluir o item.")
 
-############
+
     def update_loop(self):
         db = SessionLocal()
 
@@ -591,79 +589,13 @@ class App(ctk.CTk):
         self.after(2000, self.update_loop)
 
 
-async def start_proxy(core):
-    opts = Options(listen_host=listen_host, listen_port=listen_port, mode=["regular"])
-    master = DumpMaster(opts)
-
-    try:
-        with open(
-            file="scripts/localization_injection.js",
-            encoding="utf-8", mode="r"
-        ) as script:
-            content = script.read()
-    except Exception as e:
-        logger.info(f"Erro ao ler script JS: {e}")
-        content = ""
-
-    class SentinelAddon:
-        def request(self, flow):
-            core.process_flow(flow)
-            flow.request.headers["User-Agent"] = fake_infos.get("header")
-            flow.request.headers["X-Forwarded-For"] = fake_infos.get("ip")
-
-            # POIS: Sem cookies, sem login
-            # if "Cookie" in flow.request.headers:
-            #     flow.request.headers["Cookie"] = "session_id=VALOR_FALSO_AQUI; " + flow.request.headers["Cookie"]
-
-        
- 
-        def response(self, flow):
-            core.process_response(flow)
-            content_type = flow.response.headers.get("Content-Type", "")
-
-            # Headers contra scripts
-            flow.response.headers.pop("Content-Security-Policy", None)
-            flow.response.headers.pop("X-Content-Security-Policy", None)
-            flow.response.headers.pop("X-WebKit-CSP", None)
-
-            if "text/html" in content_type:
-                js_payload = f"<script>{content}</script>"
-                html_original = flow.response.text
-                
-                if "</head>" in html_original.lower():
-                    html_modificado = html_original.replace("</head>", js_payload + "</head>")
-                    flow.response.text = html_modificado
-
-    master.addons.add(SentinelAddon())
-    await master.run()
-
-def thread_proxy(core):
-    """Encerrar programa com comando 'kill'"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    if os.name != 'nt': # Comando fuser é geralmente para sistemas Unix-like
-        try:
-            subprocess.run(general_settings.get("kill_proxy_command"), stderr=subprocess.DEVNULL, check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Erro ao encerrar proxy com fuser: {e}")
-        except Exception as e:
-            logger.error(f"Erro inesperado ao encerrar proxy: {e}")
-    else:
-        logger.info("Comando 'fuser' não disponível no Windows. O proxy pode não ser encerrado automaticamente.")
-
-    loop.run_until_complete(start_proxy(core))
-
-
-
 if __name__ == "__main__":
     login = ctk.CTk()
     login.title(auth_window.get("auth_title"))
     login.geometry(auth_window.get("window_size"))
 
     def auth():
-        # if ent.get() == "admin":
-        if "almondega":
+        if ent.get() == "admin":
             login.destroy()
             core = NetworkCore()
             threading.Thread(target=thread_proxy, args=(core,), daemon=True).start()

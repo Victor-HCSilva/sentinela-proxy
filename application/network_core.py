@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class NetworkCore:
     """
-    Definição de proxy com config persistente
+    Auxiliar para gerenciamento de janelas e informações
     """
 
     def __init__(self):
