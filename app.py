@@ -183,8 +183,7 @@ class App(ctk.CTk):
         self.tree.pack(fill="both", expand=True, padx=20, pady=10)
         self.tree.bind("<Double-1>", self.open_inspection)
 
-        # FRAME SETTINGS
-        # =====================
+# =====================
         # SETTINGS FRAME (REFATORADO)
         # =====================
         self.settings_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
@@ -193,10 +192,12 @@ class App(ctk.CTk):
             self.settings_frame,
             text="Configurações do Sistema",
             font=ctk.CTkFont(size=24, weight="bold")
-        ).pack(pady=20)
+        ).pack(pady=(20, 10))
 
-        options_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        options_frame.pack(pady=20, padx=40, fill="both", expand=True)
+        # 1. FRAME DE OPÇÕES GERAIS (Topo)
+        # Removido o expand=True para ele ocupar apenas o espaço necessário
+        options_frame = ctk.CTkFrame(self.settings_frame)
+        options_frame.pack(pady=10, padx=20, fill="x")
 
         # ===== CARREGAR CONFIG DO BANCO =====
         db = SessionLocal()
@@ -207,53 +208,45 @@ class App(ctk.CTk):
         traffic_value = config.traffic_visible if config else 100
         theme_value = config.theme.value if config else "Dark"
 
-        # =====================
-        # TRAFFIC INPUT
-        # =====================
-        ctk.CTkLabel(options_frame, text="Tráfego visível:").grid(
-            row=0, column=0, pady=10, sticky="w"
+        # Grid de Configurações Gerais
+        options_grid = ctk.CTkFrame(options_frame, fg_color="transparent")
+        options_grid.pack(pady=15, padx=20, anchor="w")
+
+        ctk.CTkLabel(options_grid, text="Tráfego visível:").grid(
+            row=0, column=0, pady=10, padx=(0, 20), sticky="w"
         )
 
-        self.traffic_entry = ctk.CTkEntry(options_frame)
-        self.traffic_entry.grid(row=0, column=1, pady=10, padx=20)
+        self.traffic_entry = ctk.CTkEntry(options_grid, width=150)
+        self.traffic_entry.grid(row=0, column=1, pady=10, sticky="w")
         self.traffic_entry.insert(0, str(traffic_value))
 
-        # =====================
-        # THEME SWITCH
-        # =====================
-        ctk.CTkLabel(options_frame, text="Tema escuro:").grid(
-            row=1, column=0, pady=10, sticky="w"
+        ctk.CTkLabel(options_grid, text="Tema escuro:").grid(
+            row=1, column=0, pady=10, padx=(0, 20), sticky="w"
         )
 
         self.theme_switch = ctk.CTkSwitch(
-            options_frame,
+            options_grid,
             text="Ativado",
             command=self._toggle_theme_state
         )
-        self.theme_switch.grid(row=1, column=1, pady=10, padx=20)
+        self.theme_switch.grid(row=1, column=1, pady=10, sticky="w")
 
         if theme_value == "Dark":
             self.theme_switch.select()
         else:
             self.theme_switch.deselect()
 
-        # =====================
-        # BOTÃO CONFIRMAR
-        # =====================
         ctk.CTkButton(
-            options_frame,
+            options_grid,
             text="Confirmar alterações",
             fg_color=green_hexadecimal,
             command=self.apply_settings
-        ).grid(row=2, column=0, columnspan=2, pady=30)
+        ).grid(row=2, column=0, columnspan=2, pady=(20, 10), sticky="w")
 
-        # estado temporário (NÃO SALVA AINDA)
         self._pending_theme = "Dark" if self.theme_switch.get() else "Light"
 
-        # Dentro de setup_main_frames, no final da seção de SETTINGS
+        # 2. FRAME DE GERENCIAMENTO DE LISTAS (Base - ocupa o restante da tela)
         self.setup_management_tab()
-
-        # Carrega a lista inicial (URLs por padrão)
         self.refresh_mgmt_list()
 
 
@@ -262,7 +255,16 @@ class App(ctk.CTk):
         self.mgmt_frame = ctk.CTkFrame(self.settings_frame)
         self.mgmt_frame.pack(pady=10, padx=20, fill="both", expand=True)
 
-        # Seletor de qual categoria gerenciar
+        ctk.CTkLabel(
+            self.mgmt_frame,
+            text="Gerenciamento de Regras",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(pady=(15, 5), anchor="w", padx=20)
+
+        # Barra de Ações (Categoria -> Input -> Botão) em uma única linha
+        action_bar = ctk.CTkFrame(self.mgmt_frame, fg_color="transparent")
+        action_bar.pack(fill="x", padx=20, pady=10)
+
         self.category_var = ctk.StringVar(value="URLs")
         categories = [
             "URLs",
@@ -272,29 +274,30 @@ class App(ctk.CTk):
             "Domínios de Anúncio",
             "Headers Excluídos"
         ] 
+        
         selector = ctk.CTkOptionMenu(
-            self.mgmt_frame, 
+            action_bar, 
             values=categories,
             variable=self.category_var,
-            command=self.refresh_mgmt_list
+            command=self.refresh_mgmt_list,
+            width=180
         )
-        selector.pack(pady=10)
+        selector.pack(side="left", padx=(0, 10))
 
-        # Campo de entrada para novos valores
-        self.new_entry = ctk.CTkEntry(self.mgmt_frame, placeholder_text="Novo valor...")
-        self.new_entry.pack(side="left", padx=10, pady=10, expand=True, fill="x")
+        self.new_entry = ctk.CTkEntry(action_bar, placeholder_text="Digite o novo valor aqui...")
+        self.new_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         add_btn = ctk.CTkButton(
-            self.mgmt_frame, text="Adicionar", 
+            action_bar, text="Adicionar", 
             fg_color=green_hexadecimal,
-            command=self.add_to_list
+            command=self.add_to_list,
+            width=100
         )
-        add_btn.pack(side="right", padx=10)
+        add_btn.pack(side="right")
 
-        # Lista visual (Listbox ou similar)
-        self.items_listbox = ctk.CTkScrollableFrame(self.mgmt_frame, height=200)
-        self.items_listbox.pack(fill="both", expand=True, padx=10, pady=10)
-
+        # Lista visual (Listbox scrollable)
+        self.items_listbox = ctk.CTkScrollableFrame(self.mgmt_frame)
+        self.items_listbox.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
     def add_to_list(self):
         val = self.new_entry.get().strip()
@@ -454,21 +457,22 @@ class App(ctk.CTk):
         items = repo.get_all()
 
         for item in items:
-            # Lógica para tratar o objeto relacionado (ex: exibir o nome da URL em vez do objeto)
             val = getattr(item, attr)
-            if hasattr(val, 'url'): # Caso seja um objeto relacionado
+            if hasattr(val, 'url'): 
                 val = val.url
             
-            row = ctk.CTkFrame(self.items_listbox, fg_color="transparent")
-            row.pack(fill="x", pady=2, padx=5)
-            ctk.CTkLabel(row, text=val, anchor="w").pack(side="left", padx=10, expand=True, fill="x")
+            # Frame da linha com leve tom de contraste (opcional)
+            row = ctk.CTkFrame(self.items_listbox, fg_color="#2b2b2b", corner_radius=5)
+            row.pack(fill="x", pady=3, padx=2)
+            
+            ctk.CTkLabel(row, text=val, anchor="w").pack(side="left", padx=15, pady=5, expand=True, fill="x")
             
             ctk.CTkButton(
-                row, text="Excluir", width=60, height=24,
+                row, text="Excluir", width=70, height=26,
                 fg_color=vermelho_hexadecimal,
+                hover_color="#7b241c",
                 command=lambda i=item.id, m=model: self.delete_mgmt_item(i, m)
-            ).pack(side="right", padx=5)
-
+            ).pack(side="right", padx=15, pady=5) # Padding maior na direita para não conflitar com a barra de scroll
 
     def delete_mgmt_item(self, item_id, model):
         """Remove um item do banco e atualiza a interface e o Core"""

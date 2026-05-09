@@ -8,8 +8,6 @@ class MonitorInspector(Base):
     def __init__(self):
         super().__init__(self)
 
-
-    
     def open_inspection(self, event):
         """
         Detalhamento de requisição (inspeção)

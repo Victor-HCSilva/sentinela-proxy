@@ -15,7 +15,7 @@ class WM:
         self.dash_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
 
         self.fig, (self.ax_host, self.ax_meth, self.ax_ram) = plt.subplots(3, 1, figsize=(6, 12))
-        self.fig.patch.set_facecolor('#1a1a1a')
+        # self.fig.patch.set_facecolor('#1a1a1a')
         for ax in [self.ax_host, self.ax_meth, self.ax_ram]:
             ax.set_facecolor('#1a1a1a')
             ax.tick_params(colors='white')

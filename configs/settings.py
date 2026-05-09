@@ -21,11 +21,11 @@ app_config = {
 
 ctk_button_labels = {
     "dashboard":"Dashboard",
-    "monitor": "Monitor Real Time",
-    "kill": "FIREWALL KILL",
-    "login": "ENTRAR",
-    "settings": "Configurações",
-    "settings_confirmation": "Salvar",
+    "monitor": "Monitor",
+    "kill": "Kill Browsers",
+    "login": "Enter",
+    "settings": "Settings",
+    "settings_confirmation": "Save",
 }
 
 auth_window = {
