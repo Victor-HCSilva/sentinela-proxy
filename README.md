@@ -38,4 +38,5 @@ git clone https://github.com/Victor-HCSilva/sentinela-proxy.git && cd sentinela-
 
 - Imagens:
 ![Dashboard](./docs/imgs/image-dashboard.png)
+
 ![Dashboard](./docs/imgs/image-monitor.png)

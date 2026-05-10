@@ -1,7 +1,8 @@
 from .traffic_engine import TrafficFilterEngine
 from mitmproxy import http
 from database import (
-    SessionLocal,
+    ConfigSessionLocal,
+    TrafficSessionLocal,
     TrafficLog,
     Configuration,
     WhiteList,
@@ -18,6 +19,7 @@ class NetworkCore:
     """
 
     def __init__(self):
+        self.running = True
         self.ram_history = []
         self.stats = {"total": 0, "alerts": 0}
         self.filter_engine = TrafficFilterEngine()
@@ -32,7 +34,7 @@ class NetworkCore:
     # LOAD INICIAL (CACHE)
     # =========================
     def load_configs(self):
-        db = SessionLocal()
+        db = ConfigSessionLocal()
 
         try:
             # Config global (id fixo)
@@ -81,7 +83,7 @@ class NetworkCore:
         if host in self.whitelist:
             return
 
-        db = SessionLocal()
+        db = TrafficSessionLocal()
 
         try:
             content = flow.request.content or b""
@@ -126,3 +128,23 @@ class NetworkCore:
         """
         self.load_configs()
 
+
+    def shutdown(self):
+
+        logger.info("Encerrando NetworkCore...")
+
+        self.running = False
+
+        try:
+
+            if hasattr(self, "proxy_master"):
+                if hasattr(self, "loop"):
+                    self.loop.call_soon_threadsafe(self.proxy_master.shutdown)
+                else:
+                    self.proxy_master.shutdown()
+
+        except Exception as e:
+
+            logger.error(
+                f"Erro ao encerrar proxy: {e}"
+            )

@@ -1,11 +1,12 @@
 from mitmproxy import http
 from database import (
-    SessionLocal,
+    ConfigSessionLocal,
     AddDomain,
     BlockKeyWord,
     WhiteList,
     ExcludeHeader,
 )
+from sqlalchemy.orm import joinedload
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,54 +30,71 @@ class TrafficFilterEngine:
     # LOAD RULES DO BANCO
     # =========================
     def load_rules(self):
-        db = SessionLocal()
+        db = ConfigSessionLocal()
 
         try:
-            # ---------------------
-            # Domínios de anúncios
-            # ---------------------
-            ads = db.query(AddDomain).all()
+
+            ads = (
+                db.query(AddDomain)
+                .options(joinedload(AddDomain.url))
+                .all()
+            )
+
             self.ad_domains = {
                 item.url.url for item in ads if item.url
             }
 
-            # ---------------------
-            # Keywords globais
-            # ---------------------
-            keywords = db.query(BlockKeyWord).filter_by(is_active=True).all()
-            self.block_keywords = {k.word.lower() for k in keywords}
+            keywords = (
+                db.query(BlockKeyWord)
+                .filter_by(is_active=True)
+                .all()
+            )
 
-            # ---------------------
-            # Headers globais
-            # ---------------------
-            headers = db.query(ExcludeHeader).all()
-            self.global_exclude_headers = {
-                h.field_name.lower() for h in headers
+            self.block_keywords = {
+                k.word.lower()
+                for k in keywords
             }
 
-            # ---------------------
-            # Regras por URL (WhiteList)
-            # ---------------------
-            white = db.query(WhiteList).all()
+            headers = db.query(ExcludeHeader).all()
+
+            self.global_exclude_headers = {
+                h.field_name.lower()
+                for h in headers
+            }
+
+            white = (
+                db.query(WhiteList)
+                .options(
+                    joinedload(WhiteList.url),
+                    joinedload(WhiteList.exclude_header),
+                    joinedload(WhiteList.block_keyword)
+                )
+                .all()
+            )
 
             self.url_header_rules = {}
             self.url_keyword_rules = {}
 
             for item in white:
+
                 if not item.url:
                     continue
 
                 host = item.url.url
 
-                # headers específicos
                 if item.exclude_header:
-                    self.url_header_rules.setdefault(host, set()).add(
+                    self.url_header_rules.setdefault(
+                        host,
+                        set()
+                    ).add(
                         item.exclude_header.field_name.lower()
                     )
 
-                # keywords específicas
                 if item.block_keyword:
-                    self.url_keyword_rules.setdefault(host, set()).add(
+                    self.url_keyword_rules.setdefault(
+                        host,
+                        set()
+                    ).add(
                         item.block_keyword.word.lower()
                     )
 
@@ -119,6 +137,8 @@ class TrafficFilterEngine:
             headers_to_remove |= self.url_header_rules[host]
 
         for header in headers_to_remove:
+            if flow is None:
+                continue
             flow.request.headers.pop(header, None)
 
     # =========================

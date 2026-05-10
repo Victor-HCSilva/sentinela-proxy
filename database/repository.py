@@ -1,26 +1,41 @@
-from typing import Type, List, Union
-from sqlalchemy.orm import Session
+from typing import List, Type, Union
+
 from sqlalchemy.exc import SQLAlchemyError
-from .db import SessionLocal
+from sqlalchemy.orm import Session, joinedload
+
+from .db import (
+    AddDomain,
+    BlackList,
+    ConfigSessionLocal,
+    TrafficLog,
+    TrafficSessionLocal,
+    WhiteList,
+)
+
 
 class Repository:
-    def __init__(self, table: Type, session: Session = None) -> None:
-        self.table = table
+    def __init__(self, model: Type, session: Session = None):
+
+        self.model = model
         self._external_session = session
-        # Pegamos as colunas para validação sem precisar de uma sessão aberta
-        self.valid_fields: List[str] = table.__table__.columns.keys()
+        self.valid_fields = model.__table__.columns.keys()
 
     def _get_session(self) -> Session:
-        return self._external_session if self._external_session else SessionLocal()
+        if self._external_session:
+            return self._external_session
+        if self.model == TrafficLog:
+            return TrafficSessionLocal()
+        return ConfigSessionLocal()
 
     def is_valid(self, keys: Union[List[str], set]) -> bool:
         return all(key in self.valid_fields for key in keys)
 
     def create(self, **kwargs) -> bool:
-        if not self.is_valid(kwargs.keys()): return False
+        if not self.is_valid(kwargs.keys()):
+            return False
         session = self._get_session()
         try:
-            obj = self.table(**kwargs)
+            obj = self.model(**kwargs)
             session.add(obj)
             session.commit()
             return True
@@ -28,37 +43,50 @@ class Repository:
             session.rollback()
             return False
         finally:
-            if not self._external_session: session.close()
+            if not self._external_session:
+                session.close()
 
     def update(self, id: int, **kwargs) -> bool:
-        if not self.is_valid(kwargs.keys()): return False
+        if not self.is_valid(kwargs.keys()):
+            return False
         session = self._get_session()
         try:
-            rows = session.query(self.table).filter_by(id=id).update(kwargs)
+            rows = session.query(self.model).filter_by(id=id).update(kwargs)
             session.commit()
             return rows > 0
         except SQLAlchemyError:
             session.rollback()
             return False
         finally:
-            if not self._external_session: session.close()
-            
+            if not self._external_session:
+                session.close()
+
     def delete(self, id: int) -> bool:
         """Deleta a instância pelo ID de forma segura"""
         session = self._get_session()
         try:
-            rows_deleted = session.query(self.table).filter_by(id=id).delete()
+            rows_deleted = session.query(self.model).filter_by(id=id).delete()
             session.commit()
             return rows_deleted > 0
         except SQLAlchemyError:
             session.rollback()
             return False
         finally:
-            if not self._external_session: session.close()
+            if not self._external_session:
+                session.close()
 
+    #
     def get_all(self):
-        session = self._get_session()
+        db = TrafficSessionLocal() if self.model == TrafficLog else ConfigSessionLocal()
+
         try:
-            return session.query(self.table).all()
+            query = db.query(self.model)
+
+            # modelos com relacionamento URL
+            if self.model in [BlackList, WhiteList, AddDomain]:
+                query = query.options(joinedload(self.model.url))
+
+            return query.all()
+
         finally:
-             if not self._external_session: session.close()
+            db.close()

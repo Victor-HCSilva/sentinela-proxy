@@ -1,5 +1,5 @@
 from .db import (
-        SessionLocal, TrafficLog, Configuration,
+    TrafficSessionLocal, ConfigSessionLocal, TrafficLog, Configuration,
     Url,
     AddDomain,
     BlockKeyWord,
@@ -7,14 +7,15 @@ from .db import (
     WhiteList,
     ExcludeHeader,
     populate,
-    is_empty,
+    config_is_empty,
     update_configs,
     Theme
 )
 from .repository import Repository
 
 __all__ = [
-    "SessionLocal",
+    "TrafficSessionLocal",
+    "ConfigSessionLocal",
     "TrafficLog",
     "Url",
     "Configuration",
@@ -24,7 +25,7 @@ __all__ = [
     "WhiteList",
     "ExcludeHeader",
     "populate",
-    "is_empty",
+    "config_is_empty",
     "update_configs",
     "Theme",
     "Repository"
