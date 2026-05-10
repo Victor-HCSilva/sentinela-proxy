@@ -2,39 +2,94 @@ import enum
 import os
 import tempfile
 from datetime import datetime, timezone
-import logging 
-from sqlalchemy.orm import DeclarativeMeta
+import logging
 
 from sqlalchemy import (
-    create_engine, Column,
-    Integer, String, DateTime, Text as SQLText,
-    Enum as SQLEnum, ForeignKey, Boolean
-)
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
-from typing import Type, List, Union
-from sqlalchemy.orm import DeclarativeMeta, Session
-from sqlalchemy.exc import SQLAlchemyError
-
-
-# =====================
-# CONFIG DB
-# =====================
-db_name = "sentinelaDB.db"
-
-db_path = os.path.join(tempfile.gettempdir(), db_name)
-DB_URL = f"sqlite:///{db_path}"
-
-engine = create_engine(
-    DB_URL,
-    connect_args={'check_same_thread': False}
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Text as SQLText,
+    Enum as SQLEnum,
+    ForeignKey,
+    Boolean,
 )
 
-SessionLocal = sessionmaker(bind=engine)
-Base = declarative_base()
+from sqlalchemy.orm import (
+    sessionmaker,
+    declarative_base,
+    relationship,
+)
+
+# =====================
+# LOGGER
+# =====================
+logger = logging.getLogger(__name__)
+
+# =====================
+# PATHS
+# =====================
+
+# Banco TEMPORÁRIO (/tmp)
+temp_db_name = "sentinela_traffic.db"
+temp_db_path = os.path.join(
+    tempfile.gettempdir(),
+    temp_db_name
+)
+
+# Banco PERSISTENTE (configurações)
+config_db_path = os.path.join(
+    os.getcwd(),
+    "config.db"
+)
+
+TEMP_DB_URL = f"sqlite:///{temp_db_path}"
+CONFIG_DB_URL = f"sqlite:///{config_db_path}"
+
+# =====================
+# ENGINES
+# =====================
+
+# Banco temporário
+traffic_engine = create_engine(
+    TEMP_DB_URL,
+    connect_args={"check_same_thread": False},
+)
+
+# Banco persistente
+config_engine = create_engine(
+    CONFIG_DB_URL,
+    connect_args={"check_same_thread": False},
+)
+
+# =====================
+# SESSIONS
+# =====================
+
+TrafficSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=traffic_engine,
+)
+
+ConfigSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=config_engine,
+)
+
+# =====================
+# BASES
+# =====================
+
+TrafficBase = declarative_base()
+ConfigBase = declarative_base()
 
 # =====================
 # ENUMS
 # =====================
+
 class Theme(enum.Enum):
     DARK = "Dark"
     LIGHT = "Light"
@@ -44,184 +99,484 @@ class Theme(enum.Enum):
 # =====================
 # HELPERS
 # =====================
+
 def now_utc():
     return datetime.now(timezone.utc)
 
 
-# =====================
-# MODELS
-# =====================
-class TrafficLog(Base):
+# =========================================================
+# ================= TEMP DATABASE =========================
+# =========================================================
+
+class TrafficLog(TrafficBase):
     __tablename__ = "traffic_logs"
 
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=now_utc)
+
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
+
     host = Column(String)
     method = Column(String)
     size = Column(Integer)
+
     headers = Column(SQLText)
     payload = Column(SQLText)
 
 
-class Configuration(Base):
+# =========================================================
+# ============== CONFIG DATABASE ==========================
+# =========================================================
+
+class Configuration(ConfigBase):
     __tablename__ = "configs"
 
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=now_utc)
+
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
+
     traffic_visible = Column(Integer)
-    theme = Column(SQLEnum(Theme, native_enum=False), default=Theme.DARK, nullable=False)
+
+    theme = Column(
+        SQLEnum(
+            Theme,
+            native_enum=False
+        ),
+        default=Theme.DARK,
+        nullable=False,
+    )
 
 
-class Url(Base):
+class Url(ConfigBase):
     __tablename__ = "urls"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    url = Column(String, unique=True, nullable=False)
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
+
+    url = Column(
+        String,
+        unique=True,
+        nullable=False
+    )
 
 
-class AddDomain(Base):
+class AddDomain(ConfigBase):
     __tablename__ = "add_domains"
 
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=now_utc)
 
-    url_id = Column(Integer, ForeignKey("urls.id"))
-    url = relationship("Url")
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
 
-    is_active = Column(Boolean, default=True)
+    url_id = Column(
+        Integer,
+        ForeignKey("urls.id")
+    )
+
+    url = relationship(
+        "Url",
+        lazy="joined"
+    )
+
+    is_active = Column(
+        Boolean,
+        default=True
+    )
 
 
-class BlockKeyWord(Base):
+class BlockKeyWord(ConfigBase):
     __tablename__ = "block_key_words"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, default=now_utc)
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
 
-    word = Column(String, unique=True, nullable=False)
-    is_active = Column(Boolean, default=True)
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
+
+    word = Column(
+        String,
+        unique=True,
+        nullable=False
+    )
+
+    is_active = Column(
+        Boolean,
+        default=True
+    )
 
 
-class BlackList(Base):
+class BlackList(ConfigBase):
     __tablename__ = "black_list"
 
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=now_utc)
 
-    url_id = Column(Integer, ForeignKey("urls.id"))
-    url = relationship("Url")
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
+
+    url_id = Column(
+        Integer,
+        ForeignKey("urls.id")
+    )
+
+    url = relationship(
+        "Url",
+        lazy="joined"
+    )
 
 
-class ExcludeHeader(Base):
+class ExcludeHeader(ConfigBase):
     __tablename__ = "exclude_headers"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, default=now_utc)
-    field_name = Column(String, unique=True, nullable=False)
+    id = Column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
+
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
+
+    field_name = Column(
+        String,
+        unique=True,
+        nullable=False
+    )
 
 
-class WhiteList(Base):
+class WhiteList(ConfigBase):
     __tablename__ = "white_list"
 
     id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=now_utc)
 
-    url_id = Column(Integer, ForeignKey("urls.id"), nullable=True)
-    exclude_header_id = Column(Integer, ForeignKey("exclude_headers.id"), nullable=True)
-    block_keyword_id = Column(Integer, ForeignKey("block_key_words.id"), nullable=True)
+    timestamp = Column(
+        DateTime,
+        default=now_utc
+    )
 
-    url = relationship("Url")
-    exclude_header = relationship("ExcludeHeader")
-    block_keyword = relationship("BlockKeyWord")
+    url_id = Column(
+        Integer,
+        ForeignKey("urls.id"),
+        nullable=True
+    )
+
+    exclude_header_id = Column(
+        Integer,
+        ForeignKey("exclude_headers.id"),
+        nullable=True
+    )
+
+    block_keyword_id = Column(
+        Integer,
+        ForeignKey("block_key_words.id"),
+        nullable=True
+    )
+
+    url = relationship(
+        "Url",
+        lazy="joined"
+    )
+
+    exclude_header = relationship(
+        "ExcludeHeader",
+        lazy="joined"
+    )
+
+    block_keyword = relationship(
+        "BlockKeyWord",
+        lazy="joined"
+    )
 
 
-# =====================
-# ORM OPERATIONS
-# =====================
-def is_empty():
-    session = SessionLocal()
+# =========================================================
+# ===================== HELPERS ===========================
+# =========================================================
+
+def config_is_empty():
+    session = ConfigSessionLocal()
+
     try:
         return session.query(Configuration).first() is None
+
     finally:
         session.close()
 
+
+# =========================================================
+# ===================== POPULATE ==========================
+# =========================================================
 
 def populate():
-    session = SessionLocal()
+    session = ConfigSessionLocal()
+
     try:
-        # 1. Config padrão
+
+        # ===================================
+        # CONFIG PADRÃO
+        # ===================================
+
         if not session.query(Configuration).filter_by(id=1234).first():
-            session.add(Configuration(id=1234, traffic_visible=32, theme=Theme.DARK))
 
-        # 2. URLs Base (Adicionadas primeiro para garantir que tenham IDs)
-        base_urls = ['google.com', 'globo.com', 'youtube.com', 'facebook.com', 'chatgpt.com', 'x.com', 'reddit.com', 'doubleclick.net', 'adservice.google.com', 'analytics.google.com']
+            session.add(
+                Configuration(
+                    id=1234,
+                    traffic_visible=32,
+                    theme=Theme.DARK,
+                )
+            )
+
+        # ===================================
+        # URLS BASE
+        # ===================================
+
+        base_urls = [
+            "google.com",
+            "globo.com",
+            "youtube.com",
+            "facebook.com",
+            "chatgpt.com",
+            "x.com",
+            "reddit.com",
+            "doubleclick.net",
+            "adservice.google.com",
+            "analytics.google.com",
+        ]
+
         for url_str in base_urls:
-            if not session.query(Url).filter_by(url=url_str).first():
-                session.add(Url(url=url_str))
-        session.flush() 
 
-        # 3. Headers para excluir (Privacidade)
-        headers_to_exclude = ['Cookie', 'Authorization', 'Proxy-Authorization', 'Set-Cookie', 'X-CSRF-Token']
-        for h in headers_to_exclude:
-            if not session.query(ExcludeHeader).filter_by(field_name=h).first():
-                session.add(ExcludeHeader(field_name=h))
+            exists = session.query(Url).filter_by(
+                url=url_str
+            ).first()
+
+            if not exists:
+                session.add(
+                    Url(url=url_str)
+                )
+
         session.flush()
 
-        # 4. Domínios de Anúncios (Ex: doubleclick.net é o ID 8 se seguir a ordem)
-        # Vamos buscar os IDs pelo nome da URL para não depender de números fixos
-        ad_domains = ['doubleclick.net', 'adservice.google.com']
+        # ===================================
+        # HEADERS
+        # ===================================
+
+        headers_to_exclude = [
+            "Cookie",
+            "Authorization",
+            "Proxy-Authorization",
+            "Set-Cookie",
+            "X-CSRF-Token",
+        ]
+
+        for header in headers_to_exclude:
+
+            exists = session.query(
+                ExcludeHeader
+            ).filter_by(
+                field_name=header
+            ).first()
+
+            if not exists:
+                session.add(
+                    ExcludeHeader(
+                        field_name=header
+                    )
+                )
+
+        session.flush()
+
+        # ===================================
+        # DOMÍNIOS DE ANÚNCIO
+        # ===================================
+
+        ad_domains = [
+            "doubleclick.net",
+            "adservice.google.com",
+        ]
+
         for domain in ad_domains:
-            url_rec = session.query(Url).filter_by(url=domain).first()
-            if url_rec and not session.query(AddDomain).filter_by(url_id=url_rec.id).first():
-                session.add(AddDomain(url_id=url_rec.id))
 
-        # 5. Blacklist (Domínios que queremos bloquear totalmente)
-        blacklist_domains = ['doubleclick.net']
+            url_rec = session.query(Url).filter_by(
+                url=domain
+            ).first()
+
+            if not url_rec:
+                continue
+
+            exists = session.query(AddDomain).filter_by(
+                url_id=url_rec.id
+            ).first()
+
+            if not exists:
+                session.add(
+                    AddDomain(
+                        url_id=url_rec.id
+                    )
+                )
+
+        # ===================================
+        # BLACKLIST
+        # ===================================
+
+        blacklist_domains = [
+            "doubleclick.net"
+        ]
+
         for domain in blacklist_domains:
-            url_rec = session.query(Url).filter_by(url=domain).first()
-            if url_rec and not session.query(BlackList).filter_by(url_id=url_rec.id).first():
-                session.add(BlackList(url_id=url_rec.id))
 
-        # 6. Whitelist (Exemplos seguros)
-        whitelist_domains = ['google.com', 'chatgpt.com']
+            url_rec = session.query(Url).filter_by(
+                url=domain
+            ).first()
+
+            if not url_rec:
+                continue
+
+            exists = session.query(BlackList).filter_by(
+                url_id=url_rec.id
+            ).first()
+
+            if not exists:
+                session.add(
+                    BlackList(
+                        url_id=url_rec.id
+                    )
+                )
+
+        # ===================================
+        # WHITELIST
+        # ===================================
+
+        whitelist_domains = [
+            "google.com",
+            "chatgpt.com",
+        ]
+
         for domain in whitelist_domains:
-            url_rec = session.query(Url).filter_by(url=domain).first()
-            if url_rec and not session.query(WhiteList).filter_by(url_id=url_rec.id).first():
-                session.add(WhiteList(url_id=url_rec.id))
+
+            url_rec = session.query(Url).filter_by(
+                url=domain
+            ).first()
+
+            if not url_rec:
+                continue
+
+            exists = session.query(WhiteList).filter_by(
+                url_id=url_rec.id
+            ).first()
+
+            if not exists:
+                session.add(
+                    WhiteList(
+                        url_id=url_rec.id
+                    )
+                )
 
         session.commit()
+
+    except Exception as e:
+
+        session.rollback()
+
+        logger.exception(
+            f"Erro ao popular banco: {e}"
+        )
+
     finally:
         session.close()
 
-def update_configs(traffic_visible: int = 32, theme: Theme = Theme.DARK):
-    session = SessionLocal()
+
+# =========================================================
+# ================= UPDATE CONFIGS ========================
+# =========================================================
+
+def update_configs(
+    traffic_visible: int = 32,
+    theme: Theme = Theme.DARK,
+):
+
+    session = ConfigSessionLocal()
+
     try:
-        config = session.query(Configuration).filter_by(id=1234).first()
+
+        config = session.query(
+            Configuration
+        ).filter_by(
+            id=1234
+        ).first()
 
         if config:
+
             config.timestamp = now_utc()
             config.traffic_visible = traffic_visible
             config.theme = theme
+
         else:
+
             config = Configuration(
                 id=1234,
                 traffic_visible=traffic_visible,
-                theme=theme
+                theme=theme,
             )
+
             session.add(config)
 
         session.commit()
+
+    except Exception as e:
+
+        session.rollback()
+
+        logger.exception(
+            f"Erro ao atualizar configs: {e}"
+        )
+
     finally:
         session.close()
 
 
+# =========================================================
+# ===================== INIT DB ===========================
+# =========================================================
+
 def init_db():
-    logger = logging.getLogger(__name__)
-    Base.metadata.create_all(bind=engine)
 
-    if is_empty():
+    # TEMP
+    TrafficBase.metadata.create_all(
+        bind=traffic_engine
+    )
+
+    # CONFIG
+    ConfigBase.metadata.create_all(
+        bind=config_engine
+    )
+
+    if config_is_empty():
         populate()
-        logger.info("Banco populado ✅")
+        logger.info("Banco de configuração populado ✅")
 
-    logging.info("Banco pronto 🚀")
+    logger.info("Banco temporário pronto 🚀")
+    logger.info("Banco de configuração pronto 🚀")
+
+
+# =====================
+# START
+# =====================
 
 init_db()

@@ -15,9 +15,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from application import NetworkCore, thread_proxy
 
 # DATABASE
-from sqlalchemy import select, text
+from sqlalchemy import text
 from database import (
-    SessionLocal, 
+    TrafficSessionLocal, ConfigSessionLocal, 
     TrafficLog, 
     Configuration,
     Url,
@@ -63,6 +63,13 @@ class App(ctk.CTk):
     def __init__(self, core):
         super().__init__()
         self.core = core
+        self.after_id = None
+
+        self.protocol(
+            "WM_DELETE_WINDOW",
+            self.on_close
+        )
+        self.running = True
         self.title(app_config.get("app_name"))
         self.geometry(app_config.get("window_size"))
 
@@ -76,6 +83,51 @@ class App(ctk.CTk):
         self.select_frame_by_name("dashboard")
         self.update_loop()
 
+    def on_close(self):
+        """Fecha aplicação corretamente"""
+
+        logger.info("Encerrando interface...")
+
+        # Mostrar tela indicando encerramento
+        closing_win = ctk.CTkToplevel(self)
+        closing_win.title("Encerrando...")
+        closing_win.geometry("300x150")
+        closing_win.attributes("-topmost", True)
+        
+        # Centralizar na tela (aproximado)
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - 150
+        y = self.winfo_y() + (self.winfo_height() // 2) - 75
+        closing_win.geometry(f"+{x}+{y}")
+
+        ctk.CTkLabel(
+            closing_win, 
+            text="Encerrando Proxy e App...\nPor favor aguarde.", 
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(expand=True)
+        
+        self.update()
+
+        def do_close():
+            try:
+                # para loops
+                self.core.shutdown()
+
+                # cancela after pendente
+                if self.after_id:
+                    self.after_cancel(self.after_id)
+
+            except Exception as e:
+                logger.error(f"Erro ao fechar app: {e}")
+
+            finally:
+                self.destroy()
+                import os
+                os._exit(0)
+
+        # Aguardar um instante para o usuário ver a mensagem antes de matar
+        self.after(1000, do_close)
+
     def _toggle_theme_state(self):
         """Atualiza o texto do switch baseado no estado atual"""
         if self.theme_switch.get():
@@ -83,21 +135,49 @@ class App(ctk.CTk):
         else:
             self.theme_switch.configure(text="Desativado")
 
+
     def apply_settings(self):
         """Persiste as alterações do frame de configurações no banco de dados"""
+
         try:
             new_traffic = int(self.traffic_entry.get())
-            new_theme = Theme.DARK if self.theme_switch.get() else Theme.LIGHT
-            
-            update_configs(traffic_visible=new_traffic, theme=new_theme)
-            
-            # Aplica o tema visualmente na hora
+
+            new_theme = (
+                Theme.DARK
+                if self.theme_switch.get()
+                else Theme.LIGHT
+            )
+
+            update_configs(
+                traffic_visible=new_traffic,
+                theme=new_theme
+            )
+
             ctk.set_appearance_mode(new_theme.value)
-            
-            messagebox.showinfo("Sucesso", "Configurações aplicadas com sucesso!")
+
+            self.load_settings()
+
+            messagebox.showinfo(
+                "Sucesso",
+                "Configurações aplicadas com sucesso!"
+            )
+
         except ValueError:
-            messagebox.showerror("Erro", "O tráfego visível deve ser um número inteiro.")
-        
+
+            messagebox.showerror(
+                "Erro",
+                "O tráfego visível deve ser um número inteiro."
+            )
+
+        except Exception as e:
+
+            logger.exception("Erro ao salvar configurações")
+
+            messagebox.showerror(
+                "Erro",
+                f"Falha ao salvar configurações:\n{e}"
+            )
+
     def setup_sidebar(self):
         self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
@@ -183,7 +263,7 @@ class App(ctk.CTk):
         self.tree.pack(fill="both", expand=True, padx=20, pady=10)
         self.tree.bind("<Double-1>", self.open_inspection)
 
-# =====================
+        # =====================
         # SETTINGS FRAME (REFATORADO)
         # =====================
         self.settings_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
@@ -200,13 +280,17 @@ class App(ctk.CTk):
         options_frame.pack(pady=10, padx=20, fill="x")
 
         # ===== CARREGAR CONFIG DO BANCO =====
-        db = SessionLocal()
+        db = ConfigSessionLocal()
         config = db.query(Configuration).filter_by(id=1234).first()
         db.close()
 
         # fallback seguro
         traffic_value = config.traffic_visible if config else 100
-        theme_value = config.theme.value if config else "Dark"
+        theme_value = (
+            config.theme.value
+            if config and config.theme
+            else "Dark"
+        )
 
         # Grid de Configurações Gerais
         options_grid = ctk.CTkFrame(options_frame, fg_color="transparent")
@@ -236,6 +320,8 @@ class App(ctk.CTk):
         else:
             self.theme_switch.deselect()
 
+        self._toggle_theme_state()
+
         ctk.CTkButton(
             options_grid,
             text="Confirmar alterações",
@@ -248,6 +334,7 @@ class App(ctk.CTk):
         # 2. FRAME DE GERENCIAMENTO DE LISTAS (Base - ocupa o restante da tela)
         self.setup_management_tab()
         self.refresh_mgmt_list()
+        
 
 
     def setup_management_tab(self):
@@ -302,39 +389,92 @@ class App(ctk.CTk):
     def add_to_list(self):
         val = self.new_entry.get().strip()
         category = self.category_var.get()
-        if not val: return
 
-        db = SessionLocal()
+        if not val:
+            return
+
+        db = ConfigSessionLocal()
+
         try:
-            if category in ["URLs", "Palavras Bloqueadas", "Blacklist", "Whitelist", "Domínios de Anúncio", "Headers Excluídos"]:
+
+            # =====================
+            # BLACKLIST / WHITELIST / ADS
+            # =====================
+            if category in ["Blacklist", "Whitelist", "Domínios de Anúncio"]:
+
                 url_obj = db.query(Url).filter_by(url=val).first()
+
                 if not url_obj:
                     url_obj = Url(url=val)
                     db.add(url_obj)
-                    db.commit()
-                
-                model = {"Blacklist": BlackList, "Whitelist": WhiteList, "Domínios de Anúncio": AddDomain}[category]
-                db.add(model(url_id=url_obj.id))
-            
+                    db.flush()
+
+                model = {
+                    "Blacklist": BlackList,
+                    "Whitelist": WhiteList,
+                    "Domínios de Anúncio": AddDomain
+                }[category]
+
+                exists = db.query(model).filter_by(url_id=url_obj.id).first()
+
+                if not exists:
+                    db.add(model(url_id=url_obj.id))
+
+            # =====================
+            # PALAVRAS BLOQUEADAS
+            # =====================
             elif category == "Palavras Bloqueadas":
-                db.add(BlockKeyWord(word=val))
-            
+
+                exists = db.query(BlockKeyWord).filter_by(word=val).first()
+
+                if not exists:
+                    db.add(BlockKeyWord(word=val))
+
+            # =====================
+            # HEADERS EXCLUÍDOS
+            # =====================
             elif category == "Headers Excluídos":
-                db.add(ExcludeHeader(field_name=val))
-            
+
+                exists = db.query(ExcludeHeader).filter_by(field_name=val).first()
+
+                if not exists:
+                    db.add(ExcludeHeader(field_name=val))
+
+            # =====================
+            # URLS
+            # =====================
             elif category == "URLs":
-                db.add(Url(url=val))
+
+                exists = db.query(Url).filter_by(url=val).first()
+
+                if not exists:
+                    db.add(Url(url=val))
 
             db.commit()
-            self.new_entry.delete(0, 'end')
+
+            self.new_entry.delete(0, "end")
+
             self.refresh_mgmt_list()
+
             self.core.load_configs()
+
+            messagebox.showinfo(
+                "Sucesso",
+                "Valor adicionado com sucesso!"
+            )
+
         except Exception as e:
+
             db.rollback()
-            messagebox.showerror("Erro", f"Não foi possível adicionar: {e}")
+
+            messagebox.showerror(
+                "Erro",
+                f"Não foi possível adicionar:\n{e}"
+            )
+
         finally:
             db.close()
-
+            
     def toggle_theme(self, switch):
         """Alterna entre tema claro e escuro"""
         if switch.get():
@@ -344,17 +484,44 @@ class App(ctk.CTk):
             ctk.set_appearance_mode("Light")
             switch.configure(text="Desativado")
 
-    def save_settings(self, traffic_amount, theme_state):
-        """Salva as configurações"""
-        try:
-            # Atualizar configurações (você precisará persistir isso)
-            amount = int(traffic_amount)
-            # Aqui você pode salvar em um arquivo config.json ou similar
-            
-            messagebox.showinfo("Sucesso", "Configurações salvas! Reinicie para aplicar todas as alterações.")
-        except ValueError:
-            messagebox.showerror("Erro", "Digite um número válido para quantidade de tráfego")
+    # def save_settings(self, traffic_amount, theme_state):
+    #     """Salva as configurações no banco de dados"""
+        
+    #     try:
+    #         amount = int(traffic_amount)
 
+    #         # Define o tema baseado no switch
+    #         if theme_state:
+    #             selected_theme = Theme.DARK
+    #         else:
+    #             selected_theme = Theme.LIGHT
+
+    #         # Salva no banco
+    #         update_configs(
+    #             traffic_visible=amount,
+    #             theme=selected_theme
+    #         )
+
+    #         # Atualiza visualmente
+    #         ctk.set_appearance_mode(selected_theme.value)
+
+    #         messagebox.showinfo(
+    #             "Sucesso",
+    #             "Configurações salvas com sucesso!"
+    #         )
+
+    #         self.load_settings()
+    #     except ValueError:
+    #         messagebox.showerror(
+    #             "Erro",
+    #             "Digite um número válido para quantidade de tráfego"
+    #         )
+
+    #     except Exception as e:
+    #         messagebox.showerror(
+    #             "Erro",
+    #             f"Falha ao salvar configurações:\n{e}"
+    #         )
 
     def select_frame_by_name(self, name):
         # Resetar cores dos botões
@@ -391,7 +558,7 @@ class App(ctk.CTk):
             return
         log_id = self.tree.item(item[0])['values'][0]
 
-        db = SessionLocal()
+        db = TrafficSessionLocal()
         log = db.query(TrafficLog).filter(TrafficLog.id == log_id).first()
         db.close()
 
@@ -414,6 +581,38 @@ class App(ctk.CTk):
             data += f"\n--- HEADERS ---\n{log.headers}\n"
             data += f"\n--- PAYLOAD (BODY) ---\n{log.payload if log.payload else '[Vazio]'}"
             txt.insert("0.0", data)
+
+
+    def load_settings(self):
+        """Carrega configurações do banco"""
+        
+        db = ConfigSessionLocal()
+
+        try:
+            config = db.query(Configuration).filter_by(id=1234).first()
+
+            if config:
+
+                # Quantidade de tráfego
+                self.traffic_entry.delete(0, "end")
+                self.traffic_entry.insert(
+                    0,
+                    str(config.traffic_visible)
+                )
+
+                # Tema
+                if config.theme == Theme.DARK:
+                    ctk.set_appearance_mode("Dark")
+                    self.theme_switch.select()
+                    self.theme_switch.configure(text="Ativado")
+
+                else:
+                    ctk.set_appearance_mode("Light")
+                    self.theme_switch.deselect()
+                    self.theme_switch.configure(text="Desativado")
+
+        finally:
+            db.close()
 
     def kill_browsers(self):
         targets = general_settings.get("programs_name")
@@ -488,10 +687,14 @@ class App(ctk.CTk):
 
 
     def update_loop(self):
-        db = SessionLocal()
+        if not self.running:
+            return
+            
+        db_config = ConfigSessionLocal()
+        db_traffic = TrafficSessionLocal()
 
         try:
-            config = db.query(Configuration).filter_by(id=1234).first()
+            config = db_config.query(Configuration).filter_by(id=1234).first()
 
             quantidade_de_trafegos_visiveis = (
                 config.traffic_visible
@@ -503,7 +706,7 @@ class App(ctk.CTk):
             line_conf = graphs_configs.get("line")
 
             logs = (
-                db.query(TrafficLog)
+                db_traffic.query(TrafficLog)
                 .order_by(TrafficLog.id.desc())
                 .limit(quantidade_de_trafegos_visiveis)
                 .all()
@@ -527,7 +730,7 @@ class App(ctk.CTk):
             if self.dash_frame.winfo_ismapped():
 
                 self.ax_host.clear()
-                res_h = db.execute(text(barh_conf.get("query"))).fetchall()
+                res_h = db_traffic.execute(text(barh_conf.get("query"))).fetchall()
 
                 if res_h:
                     self.ax_host.barh(
@@ -543,7 +746,7 @@ class App(ctk.CTk):
                 )
 
                 self.ax_meth.clear()
-                res_m = db.execute(text(pie_conf.get("query"))).fetchall()
+                res_m = db_traffic.execute(text(pie_conf.get("query"))).fetchall()
 
                 if res_m:
                     self.ax_meth.pie(
@@ -588,9 +791,14 @@ class App(ctk.CTk):
             logger.error(f"Erro no loop de atualização: {e}")
 
         finally:
-            db.close()
+            db_config.close()
+            db_traffic.close()
 
-        self.after(2000, self.update_loop)
+        if self.core.running:
+            self.after_id = self.after(
+                2000,
+                self.update_loop
+            )
 
 
 if __name__ == "__main__":
