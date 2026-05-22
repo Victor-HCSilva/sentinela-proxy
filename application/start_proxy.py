@@ -49,6 +49,10 @@ async def start_proxy(core):
         script_paths = [
             f"{default_path}/localizationInjection.js",
             f"{default_path}/popup/banner.js",
+            f"{default_path}/ui.js",
+            f"{default_path}/extract.js",
+            f"{default_path}/ollama.js",
+            f"{default_path}/content.js",
         ]
 
         scripts = []

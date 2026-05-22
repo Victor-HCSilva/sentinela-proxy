@@ -1,19 +1,23 @@
-from .traffic_engine import TrafficFilterEngine
-from mitmproxy import http
-from database import (
-    ConfigSessionLocal,
-    TrafficSessionLocal,
-    TrafficLog,
-    Configuration,
-    WhiteList,
-    BlackList,
-)
 import logging
+
+import customtkinter as ctk
+from mitmproxy import http
+
+from database import (
+    BlackList,
+    ConfigSessionLocal,
+    Configuration,
+    TrafficLog,
+    TrafficSessionLocal,
+    WhiteList,
+)
+
+from .traffic_engine import TrafficFilterEngine
 
 logger = logging.getLogger(__name__)
 
 
-class NetworkCore:
+class NetworkCore(ctk.CTkFrame):
     """
     Auxiliar para gerenciamento de janelas e informações
     """
@@ -49,15 +53,11 @@ class NetworkCore:
 
             # WhiteList
             white = db.query(WhiteList).all()
-            self.whitelist = {
-                item.url.url for item in white if item.url
-            }
+            self.whitelist = {item.url.url for item in white if item.url}
 
             # BlackList
             black = db.query(BlackList).all()
-            self.blacklist = {
-                item.url.url for item in black if item.url
-            }
+            self.blacklist = {item.url.url for item in black if item.url}
 
         except Exception as e:
             logger.error(f"Erro ao carregar configs: {e}")
@@ -128,7 +128,6 @@ class NetworkCore:
         """
         self.load_configs()
 
-
     def shutdown(self):
 
         logger.info("Encerrando NetworkCore...")
@@ -136,7 +135,6 @@ class NetworkCore:
         self.running = False
 
         try:
-
             if hasattr(self, "proxy_master"):
                 if hasattr(self, "loop"):
                     self.loop.call_soon_threadsafe(self.proxy_master.shutdown)
@@ -144,7 +142,5 @@ class NetworkCore:
                     self.proxy_master.shutdown()
 
         except Exception as e:
+            logger.error(f"Erro ao encerrar proxy: {e}")
 
-            logger.error(
-                f"Erro ao encerrar proxy: {e}"
-            )

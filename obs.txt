@@ -1,0 +1,13 @@
+http POST http://localhost:11434/api/generate \
+  model="qwen2.5:3b" \
+  prompt="Faça um resumo do texto abaixo. Você deve responder APENAS usando um objeto JSON válido contendo uma chave chamada 'resumo'. Exemplo do formato desejado: {\"resumo\": \"O texto fala sobre...\"}. Texto para resumir: A revolução industrial mudou o mundo e a forma de trabalho..." \
+  format="json" \
+  stream:=false
+  
+
+
+  http POST http://localhost:11434/api/generate \
+  model="qwen2.5:3b" \
+  prompt="Faça um resumo do texto abaixo. Você deve responder APENAS usando um objeto JSON válido contendo uma chave chamada 'resumo'. Exemplo do formato desejado: {\"resumo\": \"O texto fala sobre...\"}. Texto para resumir: A revolução industrial mudou o mundo e a forma de trabalho..." \
+  format="json" \
+  stream:=false
