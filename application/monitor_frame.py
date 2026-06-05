@@ -1,3 +1,7 @@
+import ast
+import json
+import logging
+from pprint import pprint
 from tkinter import ttk
 
 import customtkinter as ctk
@@ -5,13 +9,13 @@ import customtkinter as ctk
 from configs import azul_hexadecimal, inspector_window, table, white
 from database import TrafficLog, TrafficSessionLocal
 
+logger = logging.getLogger(__name__)
+
 
 class MonitorFrame(ctk.CTkFrame):
     def __init__(self, master, controller=None):
         super().__init__(master, corner_radius=0, fg_color="transparent")
-        self.controller = (
-            controller  # Referência ao App principal (para acessar o Core, se precisar)
-        )
+        self.controller = controller
         self.setup_ui()
 
     def setup_ui(self):
@@ -43,7 +47,15 @@ class MonitorFrame(ctk.CTkFrame):
         self.tree.pack(fill="both", expand=True, padx=20, pady=10)
         self.tree.bind("<Double-1>", self.open_inspection)
 
+    def encode_or_decode(self, value: bytes, encoding: str = "utf-8", encode: bool = True) -> str:
+        if encode and isinstance(value, bytes):
+            return value.decode(errors="ignore")
+        if not encode and isinstance(value, str):
+            return value.encode(encoding, errors="ignore")
+        return str(value)
+
     def open_inspection(self, event):
+        number_of_strokes = 40
         item = self.tree.selection()
         if not item:
             return
@@ -63,25 +75,41 @@ class MonitorFrame(ctk.CTkFrame):
                 txt = ctk.CTkTextbox(win, **box)
                 txt.pack(padx=10, pady=10)
 
-                headers_text = ""
-                if log.headers:
-                    try:
-                        for key, value in log.headers.items():
-                            if isinstance(key, bytes):
-                                key = key.decode(errors="ignore")
-                            if isinstance(value, bytes):
-                                value = value.decode(errors="ignore")
-                            headers_text += f"{key}: {value}\n"
-                    except Exception:
-                        headers_text = str(log.headers)
+                if log.headers is not None:
+                    headers_text = str(log.headers)
+                    content: str = headers_text[len("Headers(") : -1]
+                    content: tuple[bytes, bytes] = ast.literal_eval(content)
 
-                payload = log.payload if log.payload else "[Vazio]"
+                    try:
+                        headers_dict = {}
+
+                        for tuple_value in content:
+                            key, value = tuple_value
+                            key = self.encode_or_decode(key)
+                            value = self.encode_or_decode(value)
+                            headers_dict[key.upper()] = value
+                        headers_text = "\n".join(
+                            [f"{key}: {value}" for key, value in headers_dict.items()]
+                        )
+
+                    except Exception as e:
+                        logger.error(f"Erro ao tentar parsear headers: {e}")
+
+                try:
+                    payload: dict = ast.literal_eval(log.payload)
+                    payload_text = json.dumps(payload, indent=4)
+                    payload_text = payload_text.replace("\n", "\n" + " " * number_of_strokes)
+                except Exception as e:
+                    logger.error(f"Erro ao tentar parsear payload: {e}")
+                    payload_text = log.payload if log.payload else "[Vazio]"
+
                 data = (
                     f"DOMÍNIO : {log.host}\n"
                     f"MÉTODO  : {log.method}\n"
                     f"TAMANHO : {log.size} bytes\n\n"
-                    f"HEADERS\n{'-' * 40}\n{headers_text}\n"
-                    f"PAYLOAD (BODY)\n{'-' * 40}\n{payload}"
+                    f"HEADERS\n{'-' * number_of_strokes}\n{headers_text}\n"
+                    f"{number_of_strokes * '-'}\n"
+                    f"PAYLOAD (BODY)\n{'-' * number_of_strokes}\n{payload_text}"
                 )
                 txt.insert("0.0", data)
         finally:

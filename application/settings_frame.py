@@ -1,17 +1,18 @@
 import customtkinter as ctk
-from configs.settings import green_hexadecimal # TODO: colors.py
-from database import Configuration, ConfigSessionLocal
+
+from configs.settings import green_hexadecimal  # TODO: colors.py
+from database import ConfigSessionLocal, Configuration
 
 
 class SettingsFrame(ctk.CTkFrame):
     def __init__(self, master, controller=None):
         # Inicia o frame invisível que vai segurar os itens
         super().__init__(master, corner_radius=0, fg_color="transparent")
-        
-        self.controller = controller 
+
+        self.controller = controller
         self.setup_ui()
-        self.setup_management_tab() 
-        self.refresh_mgmt_list()   
+        self.setup_management_tab()
+        self.refresh_mgmt_list()
 
     def setup_ui(self):
         # 1. TÍTULO
@@ -31,8 +32,9 @@ class SettingsFrame(ctk.CTkFrame):
         db.close()
 
         # Mock provisório para testar a UI
-        traffic_value = 100 
+        traffic_value = 100
         theme_value = "Dark"
+        theme_value = "Light"
 
         options_grid = ctk.CTkFrame(options_frame, fg_color="transparent")
         options_grid.pack(pady=15, padx=20, anchor="w")
@@ -54,7 +56,7 @@ class SettingsFrame(ctk.CTkFrame):
         )
         self.theme_switch.grid(row=1, column=1, pady=10, sticky="w")
 
-        if theme_value == "Dark":
+        if theme_value == "Light":
             self.theme_switch.select()
         else:
             self.theme_switch.deselect()
@@ -71,13 +73,13 @@ class SettingsFrame(ctk.CTkFrame):
         self._pending_theme = "Dark" if self.theme_switch.get() else "Light"
 
     def setup_management_tab(self):
-        pass # Implementar depois
-    
-    def refresh_mgmt_list(self): 
-        pass # Implementar depois
-    
-    def _toggle_theme_state(self): 
-        pass # Implementar depois
-    
-    def apply_settings(self): 
-        pass # Implementar depois
+        pass  # Implementar depois
+
+    def refresh_mgmt_list(self):
+        pass  # Implementar depois
+
+    def _toggle_theme_state(self):
+        pass  # Implementar depois
+
+    def apply_settings(self):
+        pass  # Implementar depois

@@ -51,7 +51,7 @@ graphs_configs = {
         "query": "SELECT method, COUNT(id) FROM traffic_logs GROUP BY method",
     },
     "barh": {
-        "title": "TOP 5 DESTINOS",
+        "title": "TOP 5 EM REQUISIÇÕES",
         "font_size": 10,
         "text_color": white,
         "query": "SELECT host, COUNT(id) as c FROM traffic_logs GROUP BY host ORDER BY c DESC LIMIT 5",

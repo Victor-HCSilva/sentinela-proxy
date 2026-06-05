@@ -202,7 +202,6 @@ class ConfigData(ctk.CTkFrame):
             db.commit()
             self.new_entry.delete(0, "end")
             self.refresh_mgmt_list()
-            self.controller.load_configs()
             messagebox.showinfo("Sucesso", "Valor adicionado com sucesso!")
 
         except Exception as e:
